@@ -606,6 +606,9 @@ func fetchLoadblancerPoolsHealth(account cfaccounts.Account, wg *sync.WaitGroup)
 		return
 	}
 
+	// Clear stale series for this account
+	poolOriginHealthStatus.DeletePartialMatch(prometheus.Labels{"account": account.Name})
+
 	for _, pool := range pools {
 		if !pool.Enabled { // not enabled, no health values
 			continue
@@ -644,6 +647,13 @@ func fetchWorkerAnalytics(account cfaccounts.Account, wg *sync.WaitGroup) {
 	// Replace spaces with hyphens and convert to lowercase
 	accountName := strings.ToLower(strings.ReplaceAll(account.Name, " ", "-"))
 
+	// Clear stale series for this account
+	label := prometheus.Labels{"account": accountName}
+	workerRequests.DeletePartialMatch(label)
+	workerErrors.DeletePartialMatch(label)
+	workerCPUTime.DeletePartialMatch(label)
+	workerDuration.DeletePartialMatch(label)
+
 	for _, a := range r.Viewer.Accounts {
 		for _, w := range a.WorkersInvocationsAdaptive {
 			workerRequests.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status}).Add(float64(w.Sum.Requests))
@@ -674,6 +684,9 @@ func fetchLogpushAnalyticsForAccount(account cfaccounts.Account, wg *sync.WaitGr
 		return
 	}
 
+	// Clear stale series for this account
+	logpushFailedJobsAccount.DeletePartialMatch(prometheus.Labels{"account": account.ID})
+
 	for _, acc := range r.Viewer.Accounts {
 		for _, LogpushHealthAdaptiveGroup := range acc.LogpushHealthAdaptiveGroups {
 			logpushFailedJobsAccount.With(prometheus.Labels{"account": account.ID,
@@ -692,6 +705,12 @@ func fetchR2StorageForAccount(account cfaccounts.Account, wg *sync.WaitGroup) {
 	if err != nil {
 		return
 	}
+
+	// Clear stale series for this account
+	label := prometheus.Labels{"account": account.Name}
+	r2Storage.DeletePartialMatch(label)
+	r2Operation.DeletePartialMatch(label)
+
 	for _, acc := range r.Viewer.Accounts {
 		var totalStorage uint64
 		for _, bucket := range acc.R2StorageGroups {
@@ -753,7 +772,17 @@ func fetchZoneColocationAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
 	}
 	for _, z := range r.Viewer.Zones {
 		cg := z.ColoGroups
+		if len(cg) == 0 {
+			continue
+		}
 		name, account := findZoneAccountName(zones, z.ZoneTag)
+
+		// Clear stale series for this zone/account
+		label := prometheus.Labels{"zone": name, "account": account}
+		zoneColocationVisits.DeletePartialMatch(label)
+		zoneColocationEdgeResponseBytes.DeletePartialMatch(label)
+		zoneColocationRequestsTotal.DeletePartialMatch(label)
+
 		for _, c := range cg {
 			zoneColocationVisits.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.Visits))
 			zoneColocationEdgeResponseBytes.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.EdgeResponseBytes))
@@ -814,6 +843,7 @@ func addHTTPGroups(z *zoneResp, name string, account string) {
 	zoneBandwidthCached.DeletePartialMatch(label)
 	zoneBandwidthSSLEncrypted.DeletePartialMatch(label)
 	zoneThreatsTotal.DeletePartialMatch(label)
+	zoneThreatsType.DeletePartialMatch(label)
 	zonePageviewsTotal.DeletePartialMatch(label)
 	zoneUniquesTotal.DeletePartialMatch(label)
 
@@ -1147,6 +1177,18 @@ func addAccountHTTPDataTransfer(r *cloudflareResponseAccountHTTPDataTransfer, ac
 
 func addCloudflareTunnelStatus(account cfaccounts.Account) {
 	tunnels := fetchCloudflareTunnels(account)
+	// nil means the fetch failed; keep the last known series in that case
+	if tunnels == nil {
+		return
+	}
+
+	// Clear stale series for this account
+	label := prometheus.Labels{"account": account.Name}
+	tunnelInfo.DeletePartialMatch(label)
+	tunnelHealthStatus.DeletePartialMatch(label)
+	tunnelConnectorInfo.DeletePartialMatch(label)
+	tunnelConnectorActiveConnections.DeletePartialMatch(label)
+
 	for _, t := range tunnels {
 		tunnelInfo.With(
 			prometheus.Labels{
@@ -1242,6 +1284,11 @@ func addASNGroups(z *zoneRespASN, name string, account string) {
 	if len(z.HTTPRequestsASNGroups) == 0 {
 		return
 	}
+
+	// Clear stale series for this zone/account
+	label := prometheus.Labels{"zone": name, "account": account}
+	zoneRequestASN.DeletePartialMatch(label)
+	zoneBandwidthASN.DeletePartialMatch(label)
 
 	for _, g := range z.HTTPRequestsASNGroups {
 		asn := g.Dimensions.ClientASN

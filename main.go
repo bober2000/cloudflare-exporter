@@ -117,6 +117,10 @@ func fetchMetrics() {
 	targetAccounts := getTargetAccounts()
 	accounts := fetchAccounts(targetAccounts)
 
+	// logpushFailedJobsZone has no zone/account labels, so it cannot be cleared
+	// per zone batch; reset it once per scrape cycle instead.
+	logpushFailedJobsZone.Reset()
+
 	for _, a := range accounts {
 		wg.Add(1)
 		go fetchWorkerAnalytics(a, &wg)
